@@ -1,0 +1,194 @@
+﻿@{
+    ViewData["Title"] = "Covid Political";
+}
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <link rel="shortcut icon" href="">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1IjoicnlhbnRpbW90aHkiLCJhIjoiY2tlNXN5bjRrMGJ6NjJybjVpenJlODZ1NiJ9.6YxFfsow9guHOa4PzBnN_A';
+
+        var map = new mapboxgl.Map({
+            'container': 'map',
+            'style': 'mapbox://styles/mapbox/dark-v10',
+            'center': [-98, 38.88],
+            'minZoom': 2,
+            'zoom': 4
+        });
+
+        map.on('load', async function () {
+            // source: US counties for political fill & border around county
+            map.addSource('counties-source', {
+                'type': 'vector',
+                'url': 'mapbox://mapbox.82pkq93d',
+                'promoteId': { 'original': 'FIPS' },
+            });
+
+            // source: US state for border around state
+            map.addSource('states-source', {
+                'type': 'geojson',
+                'data':
+                    'https://docs.mapbox.com/mapbox-gl-js/assets/us_states.geojson'
+            });
+
+            // county border & fill color by political percentage
+            map.addLayer(
+                {
+                    'id': 'counties-layer',
+                    'type': 'fill',
+                    'source': 'counties-source',
+                    'source-layer': 'original',
+                    'paint': {
+                        'fill-outline-color': '#666666',
+                        'fill-color': [
+                            'case',
+                            ['>',
+                                ['feature-state', 'DemPercentage'],
+                                ['feature-state', 'GopPercentage']],
+                            // democrat county
+                            ['interpolate',
+                                ['linear'],
+                                ['-', ['feature-state', 'DemPercentage'], ['feature-state', 'GopPercentage']],
+                                0, 'white',
+                                0.3, 'blue'],
+                            // republican county
+                            ['interpolate',
+                                ['linear'],
+                                ['-', ['feature-state', 'GopPercentage'], ['feature-state', 'DemPercentage']],
+                                0, 'white',
+                                0.3, 'red'],
+                        ],
+                        'fill-opacity': 0.5
+                    },
+                }
+            );
+
+            // state border
+            map.addLayer(
+                {
+                    'id': 'state-borders',
+                    'type': 'line',
+                    'source': 'states-source',
+                    'layout': {},
+                    'paint': {
+                        'line-color': '#cdcdcd',
+                        'line-width': 1
+                    }
+                },
+                'waterway-label'
+            );
+
+            // fetch election results - static file
+            await fetch('/Data/2016_election_us_counties.json')
+                .then(response => response.text())
+                .then((data) => {
+                    let electionjson = JSON.parse(data);
+
+                    // set for political Democrat/Republican vote percentages
+                    electionjson.forEach((item) => {
+                        map.setFeatureState(
+                            {
+                                'source': 'counties-source',
+                                'sourceLayer': 'original',
+                                'id': item.FIPS,
+                            },
+                            {
+                                'DemPercentage': item.DemPercentage,
+                                'GopPercentage': item.GopPercentage,
+                            }
+                        );
+                    });
+                });
+
+            let covidResponse = await fetch('api/covid');
+
+            let covidData = await(
+                covidResponse.headers.get('content-type').includes('json') ? covidResponse.json() : covidResponse.text()
+            );
+
+            // source: covid data for circle at geometry point
+            map.addSource('covid-source', {
+                'type': 'geojson',
+                'data':
+                    covidData
+            });
+
+            // covid circle
+            map.addLayer(
+                {
+                    'id': 'covid-point',
+                    'type': 'circle',
+                    'source': 'covid-source',
+                    'paint': {
+                        // Size circle radius by covid amount and zoom level
+                        'circle-radius': [
+                            'interpolate',
+                            ['linear'],
+                            ['zoom'],
+                            3,
+                            ['interpolate',
+                                ['linear'],
+                                ['get', 'confirmed'],
+                                1750, 0.1,
+                                25000, 8],
+                            30,
+                            ['interpolate',
+                                ['linear'],
+                                ['get', 'confirmed'],
+                                1750, 40,
+                                25000, 150]
+                        ],
+                        // Color circle by covid amount
+                        'circle-color': [
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'confirmed'],
+                            1750,
+                            'rgba(239, 232, 120,0)',
+                            7000,
+                            '#feffd9',
+                            30000,
+                            '#ffffff'
+                        ],
+                        'circle-stroke-color': [
+                            'interpolate',
+                            ['linear'],
+                            ['get', 'confirmed'],
+                            0.0,
+                            'transparent',
+                            10000,
+                            'white',
+                            23000,
+                            'black'
+                        ],
+                        'circle-stroke-width': 1,
+                    }
+                });
+        });
+    </script>
+</body>
+</html>
