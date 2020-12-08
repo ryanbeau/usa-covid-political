@@ -23,13 +23,35 @@
             bottom: 0;
             width: 100%;
         }
+
+        #menu {
+            position: absolute;
+            background: #fff;
+            padding: 10px;
+            font-family: 'Open Sans', sans-serif;
+        }
     </style>
 </head>
 
 <body>
     <div id="map"></div>
 
+    <div id="menu">
+        <input id="confirmed" type="radio" name="rcovid" value="confirmed" checked="checked" />
+        <label for="confirmed">Confirmed</label>
+        <input id="deaths" type="radio" name="rcovid" value="deaths" />
+        <label for="deaths">Deaths</label>
+        <input id="active" type="radio" name="rcovid" value="active" />
+        <label for="active">Active</label>
+        <hr />
+        <input id="actual" type="radio" name="rfilter" value="actual" checked="checked" />
+        <label for="actual">Actual</label>
+        <input id="per100k" type="radio" name="rfilter" value="per100k" />
+        <label for="per100k">Per 100k</label>
+    </div>
+
     <script>
+
         mapboxgl.accessToken = 'pk.eyJ1IjoicnlhbnRpbW90aHkiLCJhIjoiY2tlNXN5bjRrMGJ6NjJybjVpenJlODZ1NiJ9.6YxFfsow9guHOa4PzBnN_A';
 
         var map = new mapboxgl.Map({
@@ -39,6 +61,87 @@
             'minZoom': 2,
             'zoom': 4
         });
+
+        var covidInputs = document.getElementsByName('rcovid');
+        var filterInputs = document.getElementsByName('rfilter');
+
+        var expressionValues = {
+            'actual': {
+                'confirmed': 'confirmed',
+                'deaths': 'deaths',
+                'active': 'active',
+            },
+            'per100k': {
+                'confirmed': 'confirmedPer100k',
+                'deaths': 'deathsPer100k',
+                'active': 'activePer100k',
+            },
+        }
+
+        for (var i = 0; i < covidInputs.length; i++) {
+            covidInputs[i].onclick = covidOnClick;
+        }
+
+        for (var i = 0; i < filterInputs.length; i++) {
+            filterInputs[i].onclick = filterOnClick;
+        }
+
+        function covidOnClick(covid) {
+            setCovidPointFeatureValue(covid.target.value, document.querySelector('input[name="rfilter"]:checked').value);
+        }
+
+        function filterOnClick(filter) {
+            setCovidPointFeatureValue(document.querySelector('input[name="rcovid"]:checked').value, filter.target.value);
+        }
+
+        function setCovidPointFeatureValue(covid, filter) {
+            let expressionValue = expressionValues[filter][covid]
+
+            map.setPaintProperty('covid-point', 'circle-radius',
+                [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    3,
+                    ['interpolate',
+                        ['linear'],
+                        ['get', expressionValue],
+                        1750, 0.1,
+                        25000, 8],
+                    30,
+                    ['interpolate',
+                        ['linear'],
+                        ['get', expressionValue],
+                        1750, 40,
+                        25000, 150]
+                ]);
+
+            map.setPaintProperty('covid-point', 'circle-color',
+                [
+                    'interpolate',
+                    ['linear'],
+                    ['get', expressionValue],
+                    1750,
+                    'rgba(239, 232, 120,0)',
+                    7000,
+                    '#feffd9',
+                    30000,
+                    '#ffffff'
+                ]);
+
+            map.setPaintProperty('covid-point', 'circle-stroke-color',
+                [
+                    'interpolate',
+                    ['linear'],
+                    ['get', expressionValue],
+                    0.0,
+                    'transparent',
+                    10000,
+                    'white',
+                    23000,
+                    'black'
+                ]);
+        }
 
         map.on('load', async function () {
             // source: US counties for political fill & border around county
@@ -126,7 +229,7 @@
 
             let covidResponse = await fetch('api/covid');
 
-            let covidData = await(
+            let covidData = await (
                 covidResponse.headers.get('content-type').includes('json') ? covidResponse.json() : covidResponse.text()
             );
 
@@ -144,50 +247,11 @@
                     'type': 'circle',
                     'source': 'covid-source',
                     'paint': {
-                        // Size circle radius by covid amount and zoom level
-                        'circle-radius': [
-                            'interpolate',
-                            ['linear'],
-                            ['zoom'],
-                            3,
-                            ['interpolate',
-                                ['linear'],
-                                ['get', 'confirmed'],
-                                1750, 0.1,
-                                25000, 8],
-                            30,
-                            ['interpolate',
-                                ['linear'],
-                                ['get', 'confirmed'],
-                                1750, 40,
-                                25000, 150]
-                        ],
-                        // Color circle by covid amount
-                        'circle-color': [
-                            'interpolate',
-                            ['linear'],
-                            ['get', 'confirmed'],
-                            1750,
-                            'rgba(239, 232, 120,0)',
-                            7000,
-                            '#feffd9',
-                            30000,
-                            '#ffffff'
-                        ],
-                        'circle-stroke-color': [
-                            'interpolate',
-                            ['linear'],
-                            ['get', 'confirmed'],
-                            0.0,
-                            'transparent',
-                            10000,
-                            'white',
-                            23000,
-                            'black'
-                        ],
                         'circle-stroke-width': 1,
                     }
                 });
+
+            setCovidPointFeatureValue(document.querySelector('input[name="rcovid"]:checked').value, document.querySelector('input[name="rfilter"]:checked').value);
         });
     </script>
 </body>
