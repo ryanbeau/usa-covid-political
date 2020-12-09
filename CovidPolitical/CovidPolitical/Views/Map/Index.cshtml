@@ -25,7 +25,8 @@
         }
 
         #menu {
-            position: absolute;
+            position: relative;
+            float: right;
             background: #fff;
             padding: 10px;
             font-family: 'Open Sans', sans-serif;
@@ -34,7 +35,22 @@
 </head>
 
 <body>
+    <style>
+        .map-overlay {
+            font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+            background-color: #fff;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+            position: absolute;
+            width: 25%;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            display: none;
+        }
+    </style>
     <div id="map"></div>
+    <div id="map-overlay" class="map-overlay"></div>
 
     <div id="menu">
         <input id="confirmed" type="radio" name="rcovid" value="confirmed" checked="checked" />
@@ -60,6 +76,13 @@
             'center': [-98, 38.88],
             'minZoom': 2,
             'zoom': 4
+        });
+
+        var overlay = document.getElementById('map-overlay');
+
+        // Create a popup, but don't add it to the map yet.
+        var popup = new mapboxgl.Popup({
+            closeButton: false
         });
 
         var covidInputs = document.getElementsByName('rcovid');
@@ -151,6 +174,11 @@
                 'promoteId': { 'original': 'FIPS' },
             });
 
+            map.addSource('counties', {
+                'type': 'vector',
+                'url': 'mapbox://mapbox.82pkq93d'
+            });
+
             // source: US state for border around state
             map.addSource('states-source', {
                 'type': 'geojson',
@@ -205,6 +233,36 @@
                 'waterway-label'
             );
 
+            map.addLayer(
+                {
+                    'id': 'counties',
+                    'type': 'fill',
+                    'source': 'counties',
+                    'source-layer': 'original',
+                    'paint': {
+                        'fill-outline-color': 'rgba(0,0,0,0.1)',
+                        'fill-color': 'rgba(0,0,0,0.1)'
+                    }
+                },
+                'settlement-label'
+            ); // Place polygon under these labels.
+
+            map.addLayer(
+                {
+                    'id': 'counties-highlighted',
+                    'type': 'fill',
+                    'source': 'counties-source',
+                    'source-layer': 'original',
+                    'paint': {
+                        'fill-outline-color': '#484896',
+                        'fill-color': '#6e599f',
+                        'fill-opacity': 0.75
+                    },
+                    'filter': ['in', 'COUNTY', '']
+                },
+                'settlement-label'
+            ); // Place polygon under these labels.
+
             // fetch election results - static file
             await fetch('/Data/2016_election_us_counties.json')
                 .then(response => response.text())
@@ -252,6 +310,70 @@
                 });
 
             setCovidPointFeatureValue(document.querySelector('input[name="rcovid"]:checked').value, document.querySelector('input[name="rfilter"]:checked').value);
+
+            map.on('mousemove', 'counties', function (e) {
+                // Change the cursor style as a UI indicator.
+                map.getCanvas().style.cursor = 'pointer';
+
+                // Single out the first found feature.
+                var feature = e.features[0];
+
+                // Query the counties layer visible in the map. Use the filter
+                // param to only collect results that share the same county name.
+                var relatedFeatures = map.querySourceFeatures('counties', {
+                    sourceLayer: 'original',
+                    filter: ['in', 'COUNTY', feature.properties.COUNTY]
+                });
+
+                // Render found features in an overlay.
+                overlay.innerHTML = '';
+
+                // Total the population of all features
+                var populationSum = relatedFeatures.reduce(function (
+                    memo,
+                    feature
+                ) {
+                    return memo + feature.properties.population;
+                },
+                    0);
+
+                var title = document.createElement('strong');
+                title.textContent =
+                    feature.properties.COUNTY;
+
+                var population = document.createElement('div');
+                population.textContent =
+                    'Total population: ' + populationSum.toLocaleString();
+
+                var mapFips = document.createElement('div');
+                mapFips.textContent =
+                    'FIPS: ' + feature.properties.FIPS.toLocaleString();
+
+                overlay.appendChild(title);
+                overlay.appendChild(population);
+                overlay.appendChild(mapFips);
+                overlay.style.display = 'block';
+
+                // Add features that share the same county name to the highlighted layer.
+                map.setFilter('counties-highlighted', [
+                    'in',
+                    'FIPS',
+                    feature.properties.FIPS
+                ]);
+
+                // Display a popup with the name of the county
+                popup
+                    .setLngLat(e.lngLat)
+                    .setText(feature.properties.COUNTY)
+                    .addTo(map);
+            });
+
+            map.on('mouseleave', 'counties', function () {
+                map.getCanvas().style.cursor = '';
+                popup.remove();
+                map.setFilter('counties-highlighted', ['in', 'COUNTY', '']);
+                overlay.style.display = 'none';
+            });
         });
     </script>
 </body>
