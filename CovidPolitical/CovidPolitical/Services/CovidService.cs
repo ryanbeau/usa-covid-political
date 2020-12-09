@@ -54,7 +54,7 @@ namespace CovidPolitical.Services
             return geojson;
         }
 
-        private async Task<PopulationResponse> GetPopulationAsync()
+        private async Task<List<List<string>>> GetPopulationAsync()
         {
             // get population
             HttpResponseMessage response = await client.GetAsync("https://api.census.gov/data/2019/pep/population?get=POP&for=county:*");
@@ -62,15 +62,34 @@ namespace CovidPolitical.Services
 
             // deserialize
             List<List<string>> populationResponse = JsonConvert.DeserializeObject<List<List<string>>>(responseString);
+            populationResponse.RemoveAt(0);
 
-            // TODO : map to -> new PopulationResponse
-
-            return null;
+            return populationResponse;
         }
 
-        private void TransformGeojson(PopulationResponse population)
+        private void TransformGeojson(List<List<string>> populationResponse)
         {
-            // TODO: Map population to Geojson property - ie: calculate per100k (covidStat / population * 100k)
+            Dictionary<string, CovidProperty> fipsCounty = new Dictionary<string, CovidProperty>();
+            foreach (var feature in Geojson.Features)
+            {
+                if (feature.Properties.FIPS != null) 
+                { 
+                    fipsCounty[feature.Properties.FIPS] = feature.Properties;
+                }
+            }
+
+            foreach (var population in populationResponse)
+            {
+                string fips = population[1] + population[2];
+                if (fipsCounty.TryGetValue(fips, out CovidProperty property))
+                {
+                    property.Population = int.Parse(population[0]);
+                    property.ActivePer100k = (int)((decimal)property.Active / property.Population * 100000m);
+                    property.ConfirmedPer100k = (int)((decimal)property.Confirmed / property.Population * 100000m);
+                    property.DeathsPer100k = (int)((decimal)property.Deaths / property.Population * 100000m);
+                    property.RecoveredPer100k = (int)((decimal)property.Recovered / property.Population * 100000m);
+                }
+            }
         }
     }
 }
