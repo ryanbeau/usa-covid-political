@@ -1,6 +1,10 @@
+using CovidPolitical.Handler;
 using CovidPolitical.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -24,6 +28,18 @@ namespace CovidPolitical
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            // jwt bearer handler
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddScheme<AuthenticationSchemeOptions, ValidateJwtAuthenticationHandler>(JwtBearerDefaults.AuthenticationScheme, null);
+
+            // db - in memory
+            services.AddDbContext<ApplicationDbContext>(options =>
+            {
+                options.UseInMemoryDatabase("CovidPolitical");
+            },
+            ServiceLifetime.Singleton,
+            ServiceLifetime.Singleton);
+
             services.AddControllersWithViews()
                 .AddNewtonsoftJson(options =>
                 {
@@ -35,6 +51,7 @@ namespace CovidPolitical
                 });
 
             services.AddSingleton(new CovidService { MinimumUpdateInterval = TimeSpan.FromHours(1) });
+            services.AddSingleton<JwtTokenGenerator>();
 
             services.AddRouting(options => options.LowercaseUrls = true);
         }
@@ -64,6 +81,7 @@ namespace CovidPolitical
 
             app.UseRouting();
 
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>
