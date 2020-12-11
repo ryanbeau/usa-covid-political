@@ -9,6 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
     <link rel="shortcut icon" href="">
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v1.12.0/mapbox-gl.css" rel="stylesheet" />
     <style>
@@ -25,32 +26,43 @@
         }
 
         #menu {
-            position: relative;
-            float: right;
             background: #fff;
-            padding: 10px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 20px 20px 10px 20px;
             font-family: 'Open Sans', sans-serif;
         }
-    </style>
-</head>
 
-<body>
-    <style>
         .map-overlay {
             font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
             background-color: #fff;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
             border-radius: 3px;
             position: absolute;
-            width: 25%;
             top: 10px;
             left: 10px;
-            padding: 10px;
+            padding: 10px 20px;
             display: none;
         }
     </style>
+</head>
+
+<body>
     <div id="map"></div>
-    <div id="map-overlay" class="map-overlay"></div>
+
+    <div id="map-overlay" class="map-overlay">
+        <div id="county-text" class="font-weight-bold"></div>
+        <div id="fips-text"></div>
+        <div id="dem-percent-text"></div>
+        <div id="gop-percent-text"></div>
+        <div id="population-text"></div>
+        <div id="confirmed-text"></div>
+        <div id="active-text"></div>
+        <div id="deaths-text"></div>
+    </div>
 
     <div id="menu">
         <input id="confirmed" type="radio" name="rcovid" value="confirmed" checked="checked" />
@@ -59,7 +71,7 @@
         <label for="deaths">Deaths</label>
         <input id="active" type="radio" name="rcovid" value="active" />
         <label for="active">Active</label>
-        <hr />
+        <hr class="mt-0 mb-2" />
         <input id="actual" type="radio" name="rfilter" value="actual" checked="checked" />
         <label for="actual">Actual</label>
         <input id="per100k" type="radio" name="rfilter" value="per100k" />
@@ -79,6 +91,14 @@
         });
 
         var overlay = document.getElementById('map-overlay');
+        var overlayCountyText = document.getElementById('county-text');
+        var overlayPopulationText = document.getElementById('population-text');
+        var overlayFipsText = document.getElementById('fips-text');
+        var overlayDemPercentageText = document.getElementById('dem-percent-text');
+        var overlayGopPercentageText = document.getElementById('gop-percent-text');
+        var overlayConfirmedText = document.getElementById('confirmed-text');
+        var overlayActiveText = document.getElementById('active-text');
+        var overlayDeathsText = document.getElementById('deaths-text');
 
         // Create a popup, but don't add it to the map yet.
         var popup = new mapboxgl.Popup({
@@ -174,11 +194,6 @@
                 'promoteId': { 'original': 'FIPS' },
             });
 
-            map.addSource('counties', {
-                'type': 'vector',
-                'url': 'mapbox://mapbox.82pkq93d'
-            });
-
             // source: US state for border around state
             map.addSource('states-source', {
                 'type': 'geojson',
@@ -232,20 +247,6 @@
                 },
                 'waterway-label'
             );
-
-            map.addLayer(
-                {
-                    'id': 'counties',
-                    'type': 'fill',
-                    'source': 'counties',
-                    'source-layer': 'original',
-                    'paint': {
-                        'fill-outline-color': 'rgba(0,0,0,0.1)',
-                        'fill-color': 'rgba(0,0,0,0.1)'
-                    }
-                },
-                'settlement-label'
-            ); // Place polygon under these labels.
 
             map.addLayer(
                 {
@@ -311,55 +312,44 @@
 
             setCovidPointFeatureValue(document.querySelector('input[name="rcovid"]:checked').value, document.querySelector('input[name="rfilter"]:checked').value);
 
-            map.on('mousemove', 'counties', function (e) {
+            map.on('mousemove', 'counties-layer', function (e) {
                 // Change the cursor style as a UI indicator.
                 map.getCanvas().style.cursor = 'pointer';
 
                 // Single out the first found feature.
-                var feature = e.features[0];
+                let feature = e.features[0];
 
-                // Query the counties layer visible in the map. Use the filter
-                // param to only collect results that share the same county name.
-                var relatedFeatures = map.querySourceFeatures('counties', {
-                    sourceLayer: 'original',
-                    filter: ['in', 'COUNTY', feature.properties.COUNTY]
-                });
+                // get political feature-state
+                let featureState = map.getFeatureState(
+                    {
+                        'source': 'counties-source',
+                        'sourceLayer': 'original',
+                        'id': parseInt(feature.properties.FIPS),
+                    });
 
-                // Render found features in an overlay.
-                overlay.innerHTML = '';
+                // county info
+                overlayCountyText.textContent = feature.properties.COUNTY;
+                overlayFipsText.textContent = 'FIPS: ' + feature.properties.FIPS.toString();
+                // political
+                overlayDemPercentageText.textContent = 'Dem: ' + (featureState.DemPercentage * 100).toFixed(1) + '%';
+                overlayGopPercentageText.textContent = 'GOP: ' + (featureState.GopPercentage * 100).toFixed(1) + '%';
+                // population
+                overlayPopulationText.textContent = 'Total population: ' + feature.properties.population?.toLocaleString();
+                // covid
+                for (var i = 0; i < covidData.features.length; i++) {
+                    if (covidData.features[i].properties.fips == feature.properties.FIPS) {
+                        overlayConfirmedText.textContent = 'Confirmed Cases: ' + covidData.features[i].properties.confirmed?.toLocaleString();
+                        overlayActiveText.textContent = 'Active Cases: ' + covidData.features[i].properties.active?.toLocaleString();
+                        overlayDeathsText.textContent = 'Total Deaths: ' + covidData.features[i].properties.deaths?.toLocaleString();
+                        break;
+                    }
+                }
 
-                // Total the population of all features
-                var populationSum = relatedFeatures.reduce(function (
-                    memo,
-                    feature
-                ) {
-                    return memo + feature.properties.population;
-                },
-                    0);
-
-                var title = document.createElement('strong');
-                title.textContent =
-                    feature.properties.COUNTY;
-
-                var population = document.createElement('div');
-                population.textContent =
-                    'Total population: ' + populationSum.toLocaleString();
-
-                var mapFips = document.createElement('div');
-                mapFips.textContent =
-                    'FIPS: ' + feature.properties.FIPS.toLocaleString();
-
-                overlay.appendChild(title);
-                overlay.appendChild(population);
-                overlay.appendChild(mapFips);
                 overlay.style.display = 'block';
 
                 // Add features that share the same county name to the highlighted layer.
-                map.setFilter('counties-highlighted', [
-                    'in',
-                    'FIPS',
-                    feature.properties.FIPS
-                ]);
+                map.setFilter('counties-highlighted',
+                    ['in', 'FIPS', feature.properties.FIPS]);
 
                 // Display a popup with the name of the county
                 popup
@@ -368,7 +358,7 @@
                     .addTo(map);
             });
 
-            map.on('mouseleave', 'counties', function () {
+            map.on('mouseleave', 'counties-layer', function () {
                 map.getCanvas().style.cursor = '';
                 popup.remove();
                 map.setFilter('counties-highlighted', ['in', 'COUNTY', '']);
