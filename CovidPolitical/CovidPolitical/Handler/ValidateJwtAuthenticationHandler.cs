@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using Microsoft.IdentityModel.Tokens;
 
 namespace CovidPolitical.Handler
@@ -20,6 +21,9 @@ namespace CovidPolitical.Handler
     {
         private readonly IConfiguration _config;
         private readonly ApplicationDbContext _context;
+
+        private readonly string _guestUserName;
+        private readonly string _guestAccessToken;
 
         public ValidateJwtAuthenticationHandler(
             IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -32,6 +36,9 @@ namespace CovidPolitical.Handler
         {
             _config = config;
             _context = context;
+
+            _guestUserName = _config["Guest:UserName"];
+            _guestAccessToken = _config["Guest:AccessToken"];
         }
 
         protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -43,8 +50,17 @@ namespace CovidPolitical.Handler
                 return AuthenticateResult.NoResult();
             }
 
-            // get authorization
-            var token = Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+            string token = null;
+
+            // get authorization - header or cookie
+            if (Request.Headers.TryGetValue("Authorization", out StringValues stringValues))
+            {
+                token = stringValues.FirstOrDefault()?.Split(" ").Last();
+            }
+            else if (Request.Cookies.TryGetValue("Authorization", out string cookie))
+            {
+                token = cookie?.Split(" ").Last();
+            }
 
             if (token != null)
             {
@@ -70,17 +86,9 @@ namespace CovidPolitical.Handler
                     var accessToken = jwtSecurityToken.Claims.FirstOrDefault(x => x.Type == JwtRegisteredClaimNames.Jti)?.Value;
 
                     // check if User has matching access token
-                    if (await _context.Users.AnyAsync(u => u.Username == username && u.AccessToken != Guid.Empty && u.AccessToken.ToString() == accessToken))
+                    if (await IsSuccessAsync(role, username, accessToken))
                     {
-                        var claims = new[] {
-                            new Claim(ClaimTypes.Name, username),
-                            new Claim(ClaimTypes.Role, role),
-                        };
-
-                        var claimsIdentity = new ClaimsIdentity(claims, nameof(ValidateJwtAuthenticationHandler));
-
-                        var ticket = new AuthenticationTicket(
-                            new ClaimsPrincipal(claimsIdentity), Scheme.Name);
+                        var ticket = GenerateTicket(username, role);
 
                         return AuthenticateResult.Success(ticket);
                     }
@@ -92,6 +100,28 @@ namespace CovidPolitical.Handler
             }
 
             return AuthenticateResult.Fail("Token failed validation");
+        }
+
+        private async Task<bool> IsSuccessAsync(string role, string username, string accessToken)
+        {
+            if (role == "Guest" && username == _guestUserName && accessToken == _guestAccessToken)
+            {
+                return true;
+            }
+
+            return await _context.Users.AnyAsync(u => u.Username == username && u.AccessToken != Guid.Empty && u.AccessToken.ToString() == accessToken);
+        }
+
+        private AuthenticationTicket GenerateTicket(string username, string role)
+        {
+            var claims = new[] {
+                    new Claim(ClaimTypes.Name, username),
+                    new Claim(ClaimTypes.Role, role),
+                };
+
+            var claimsIdentity = new ClaimsIdentity(claims, nameof(ValidateJwtAuthenticationHandler));
+
+            return new AuthenticationTicket(new ClaimsPrincipal(claimsIdentity), Scheme.Name);
         }
     }
 }

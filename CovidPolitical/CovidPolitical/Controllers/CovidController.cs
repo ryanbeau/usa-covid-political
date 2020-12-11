@@ -18,7 +18,7 @@ namespace CovidPolitical.Controllers
         }
 
         [HttpGet]
-        [Authorize(Roles = "Member")]
+        [Authorize(Roles = "Guest,Member")]
         public async Task<FeatureCollection> Geojson()
         {
             return await _covidService.GetGeojsonAsync();

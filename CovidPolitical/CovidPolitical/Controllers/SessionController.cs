@@ -1,16 +1,13 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using System;
 using System.Threading.Tasks;
 using CovidPolitical.Models;
 using Microsoft.AspNetCore.Identity;
 using CovidPolitical.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using System.Security.Claims;
-using System.IdentityModel.Tokens.Jwt;
+using CovidPolitical.Handler;
+using System.Linq;
 
 namespace CovidPolitical.Controllers
 {
@@ -18,12 +15,12 @@ namespace CovidPolitical.Controllers
     [Route("[controller]")]
     public class SessionController : Controller
     {
-        private readonly IConfiguration _config;
+        private readonly JwtTokenGenerator _jwtTokenGenerator;
         private readonly ApplicationDbContext _context;
 
-        public SessionController(IConfiguration config, ApplicationDbContext context)
+        public SessionController(JwtTokenGenerator jwtTokenGenerator, ApplicationDbContext context)
         {
-            _config = config;
+            _jwtTokenGenerator = jwtTokenGenerator;
             _context = context;
         }
 
@@ -31,6 +28,15 @@ namespace CovidPolitical.Controllers
         [HttpPost, Route("Login")]
         public async Task<IActionResult> Login(Session session)
         {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    message = "One or more validation errors occurred.",
+                    errors = ModelState.Values.SelectMany(m => m.Errors.Select(e => e.ErrorMessage)).ToArray()
+                });
+            }
+
             var hasher = new PasswordHasher<User>();
             User user = await _context.Users.SingleOrDefaultAsync(u => u.Username == session.Username);
             if (user == null)
@@ -64,29 +70,8 @@ namespace CovidPolitical.Controllers
 
             return Ok(new
             {
-                token = GenerateJWTToken(session, user.AccessToken),
+                token = _jwtTokenGenerator.GenerateJWTTokenFromUser(user),
             });
-        }
-
-        private string GenerateJWTToken(Session session, Guid jti)
-        {
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:SecretKey"]));
-            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
-            var claims = new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, session.Username),
-                new Claim(JwtRegisteredClaimNames.Jti, jti.ToString()),
-                new Claim(ClaimTypes.Role, "Member"),
-                new Claim(ClaimTypes.Name, session.Username),
-            };
-            var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Issuer"],
-                audience: _config["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.Now.AddDays(30),
-                signingCredentials: credentials
-            );
-            return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
 }

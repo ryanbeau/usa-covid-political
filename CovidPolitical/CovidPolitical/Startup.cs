@@ -51,6 +51,7 @@ namespace CovidPolitical
                 });
 
             services.AddSingleton(new CovidService { MinimumUpdateInterval = TimeSpan.FromHours(1) });
+            services.AddSingleton<JwtTokenGenerator>();
 
             services.AddRouting(options => options.LowercaseUrls = true);
         }
