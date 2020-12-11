@@ -1,6 +1,7 @@
 using CovidPolitical.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -37,6 +38,8 @@ namespace CovidPolitical
             services.AddSingleton(new CovidService { MinimumUpdateInterval = TimeSpan.FromHours(1) });
 
             services.AddRouting(options => options.LowercaseUrls = true);
+
+            services.AddIdentity<IdentityUser, IdentityRole>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -45,6 +48,7 @@ namespace CovidPolitical
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
+
             }
             else
             {
@@ -62,10 +66,12 @@ namespace CovidPolitical
 
             app.UseRouting();
 
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>
             {
+                
                 endpoints.MapControllerRoute(
                     name: "default",
                     pattern: "{controller=Map}/{action=Index}/{id?}");

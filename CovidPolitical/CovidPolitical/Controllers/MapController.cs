@@ -1,11 +1,14 @@
 ﻿using CovidPolitical.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
 namespace CovidPolitical.Controllers
 {
+    
     public class MapController : Controller
     {
+        [Authorize]
         public IActionResult Index()
         {
             return View();
